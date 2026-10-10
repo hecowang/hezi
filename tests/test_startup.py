@@ -40,6 +40,8 @@ class StartupTests(unittest.TestCase):
                     except (urllib.error.URLError,ConnectionError):
                         if process.poll() is not None or time.monotonic()>deadline:raise AssertionError('server failed to start')
                         time.sleep(.05)
+                with urllib.request.urlopen(url+'/feed-state.js') as response:
+                    self.assertEqual(response.status,200)
                 with urllib.request.urlopen(url+'/audio/manifest.json') as response:
                     manifest=json.load(response);self.assertEqual(len(manifest['clips']),501)
                 name=next(iter(manifest['clips'].values()))

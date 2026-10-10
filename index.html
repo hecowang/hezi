@@ -1,1 +1,16 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#356448"><title>禾字 · 每天认几个字</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23356448'/%3E%3Ctext x='12' y='47' font-size='44' fill='white'%3E禾%3C/text%3E%3C/svg%3E"><link rel="stylesheet" href="style.css"></head><body><header><a href="#" id="brand" aria-label="返回首页"><span class="mark">禾</span><span>禾字<small>认几个字，多一分自在</small></span></a><button class="quiet" id="guide">◖ 听使用说明</button></header><main id="app"></main><nav aria-label="主要导航"><button data-page="home">☀<span>今天学</span></button><button data-page="course">▦<span>生活课堂</span></button><button data-page="progress">✿<span>我的收获</span></button></nav><div id="notice" role="status" aria-live="polite"></div><dialog id="agreement"><h2>给自己一个小约定</h2><p>课程一直免费。自愿约定 99 元，学会本期全部 100 个字、每字连续答对至少两次，即可申请全额返还。</p><p>漏一天没关系，进度一直保留。也可以随时退出并申请全额退款。</p><p class="muted">这是演示，不收钱、不产生真实退款。</p><button class="primary" id="join">模拟参加约定</button><button class="quiet" id="close">暂时不用</button></dialog><script type="module" src="app.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#faf8f1">
+<title>禾字 · 刷着认字</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23356448'/%3E%3Ctext x='12' y='47' font-size='44' fill='white'%3E禾%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar"><span class="brand">禾字</span><span id="position" aria-live="polite">1 / 100</span><button id="more" aria-label="打开辅助功能">⋯</button></header>
+<main id="app" class="feed" tabindex="0" aria-label="上下滑动认字"></main>
+<div id="notice" role="status" aria-live="polite"></div>
+<dialog id="tools"><div class="panel-head"><h2>辅助功能</h2><button id="close-tools" aria-label="关闭辅助功能">✕</button></div><button id="guide" class="tool-button">🔊 听使用说明</button><button id="show-progress" class="tool-button">🌾 看学习记录</button><button id="back-first" class="tool-button">↶ 从第一个字看起</button><div id="progress-panel" hidden></div></dialog>
+<dialog id="agreement"><h2>自愿学习约定 · 模拟</h2><p>完整课程免费。全部 100 字每字连续答对两次，可以模拟返还 99 元。浏览和听完不算答对。</p><p>随时可退出并模拟退款。本页面不会收钱。</p><button id="join" class="tool-button primary">模拟参加</button><button id="close-agreement" class="tool-button">关闭</button></dialog>
+<script type="module" src="app.js"></script>
+</body></html>
