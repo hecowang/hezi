@@ -8,7 +8,7 @@
 npm start
 ```
 
-打开 http://localhost:8080 。无需安装依赖；需要 Python 3。也可使用任何静态服务器托管本目录。手机在同一 Wi-Fi 下访问电脑的局域网 IP:8080（需允许对应网络访问）。不要直接以 file:// 打开，ES Modules 需 HTTP。
+打开 http://localhost:8080 。首次启动需安装下面的 Python 合成依赖，并配置火山密钥。也可使用任何静态服务器托管本目录。手机在同一 Wi-Fi 下访问电脑的局域网 IP:8080（需允许对应网络访问）。不要直接以 file:// 打开，ES Modules 需 HTTP。
 
 - 10 个生活主题、40 个小课堂、100 个常用字（每课 2–3 字）；大字卡片、中文慢速朗读、听音选字。
 - 按字记录练习结果，1/3/7/14 天复习间隔；错题进入即时复习。
@@ -34,4 +34,38 @@ node --check app.js
 
 ## 注意
 
-中文朗读依赖设备的浏览器语音引擎；无中文语音时会提示，请家人协助。Demo 不是正式教学或收款产品，没有云同步，清除浏览器数据会丢失进度。正式版应使用真人音频、真人验证课程和服务端结业判定。现有 Apache-2.0 LICENSE 保留。
+中文朗读使用预生成的火山 TTS 音频，不依赖设备的中文语音引擎。Demo 不是正式教学或收款产品，没有云同步，清除浏览器数据会丢失进度。正式版应使用真人音频、真人验证课程和服务端结业判定。现有 Apache-2.0 LICENSE 保留。
+
+## 火山 TTS 离线音频
+
+安装合成依赖（Python 3.11+、Node.js 18+）：
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+在终端输入密钥（不回显、不写入命令历史）：
+
+```bash
+read -s VOLC_TTS_API_KEY
+export VOLC_TTS_API_KEY
+npm start
+```
+
+默认使用 `seed-tts-2.0`、`zh_female_vv_uranus_bigtts`、语速 `-15`。需要账户已开通对应服务；可以通过 `VOLC_TTS_RESOURCE_ID`、`VOLC_TTS_SPEAKER`、`VOLC_TTS_SPEECH_RATE` 修改配置。`.env.example` 仅作配置参考，不会自动加载；不要提交真实密钥。
+
+启动会先检查全部 **501 段**音频：100 字各有讲解、简读、题目、正确反馈、错误反馈，加一段使用说明。缓存位于 `audio/`，按文本、音色、语速、资源及编码参数的 SHA-256 命名。完整文件直接跳过；缺失、空文件或头部无效的文件重新生成。改变文本/音色/语速时自动生成新的对应音频，旧文件保留。
+
+- `npm run audio:check`：仅检查待生成数量，不调用 API、不计费。
+- `npm run audio:generate`：补齐音频，生成 `audio/manifest.json`。
+- `npm start`：补齐全部音频后再提供网页；失败时停止启动，保留已成功生成的文件。修复问题后再次启动继续补齐。
+- 全部音频存在时，不需要密钥、不连接火山，即可启动和播放。
+- 生成时串行复用 WebSocket 连接，有连接/单段超时；不自动重试，避免隐式重复计费。
+- 音频完整收到 `SessionFinished` 后才原子写入，部分流式结果不会被当作缓存。
+- 同目录生成进程使用锁避免重复合成。异常断电可能留下 `.audio-generation.lock`，确认没有生成进程后可删除再启动。
+- 合成依赖和密钥只用于制作阶段，网页仅加载本地 MP3，不再调用浏览器 TTS 或火山 API。
+- 连续点击会停止旧音频；浏览器阻止自动播放时，可点“听题目”播放。
+
+生成需要联网并消耗火山账户额度。启动后浏览器访问本地服务器，无需联网调用 TTS；这不等于已经支持手机端断网缓存/PWA。若部署到静态主机，需一起上传 `audio/` 与 `manifest.json`，且仅上传页面和公开音频，不能上传密钥或生成脚本。默认 `audio/` 已被 Git 忽略。
+
+接口参考：[火山双向流式 WebSocket TTS](https://docs.volcengine.com/docs/DoubaoVoice/bidirectional-streaming-text-to-speech-websocket?lang=zh)。

@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+audio/
+.audio-generation.lock
+__pycache__/
+*.pyc
+.venv/
+node_modules/
