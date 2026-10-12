@@ -18,13 +18,19 @@ builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 
 class StartupTests(unittest.TestCase):
     def test_cached_startup_http_and_private_files(self):
+        self.exercise_startup(False)
+
+    def test_500_clips_without_key_still_starts(self):
+        self.exercise_startup(True)
+
+    def exercise_startup(self, missing_guide):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)/'hezi'
             shutil.copytree(ROOT,root,ignore=shutil.ignore_patterns('audio','__pycache__','.audio-generation.lock','.env','.venv','node_modules'))
             catalog=json.loads(subprocess.check_output(['node',str(root/'scripts/catalog.mjs')],text=True))
             config={'speaker':'zh_female_vv_uranus_bigtts','resource_id':'seed-tts-2.0','speech_rate':-15}
             audio=root/'audio';audio.mkdir()
-            for text in catalog:(audio/builder.filename(text,config)).write_bytes(b'ID3'+b'\0'*100)
+            for text in (catalog[1:] if missing_guide else catalog):(audio/builder.filename(text,config)).write_bytes(b'ID3'+b'\0'*100)
             (root/'.env').write_text('PRIVATE_TEST_ONLY=secret-fixture')
             with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
             env={k:v for k,v in os.environ.items() if not k.startswith('VOLC_TTS_')}
@@ -43,7 +49,8 @@ class StartupTests(unittest.TestCase):
                 with urllib.request.urlopen(url+'/feed-state.js') as response:
                     self.assertEqual(response.status,200)
                 with urllib.request.urlopen(url+'/audio/manifest.json') as response:
-                    manifest=json.load(response);self.assertEqual(len(manifest['clips']),501)
+                    manifest=json.load(response);self.assertEqual(len(manifest['clips']),500 if missing_guide else 501)
+                    self.assertEqual(manifest['missing'],catalog[:1] if missing_guide else [])
                 name=next(iter(manifest['clips'].values()))
                 request=urllib.request.Request(url+'/'+name,headers={'Range':'bytes=0-9'})
                 with urllib.request.urlopen(request) as response:
@@ -53,4 +60,5 @@ class StartupTests(unittest.TestCase):
                     self.assertEqual(result.exception.code,404)
             finally:
                 process.terminate();output=process.communicate(timeout=5)[0]
-            self.assertIn('reuse 501; generate 0',output)
+            self.assertIn('reuse 500; generate 1' if missing_guide else 'reuse 501; generate 0',output)
+            if missing_guide:self.assertIn('offline mode',output)

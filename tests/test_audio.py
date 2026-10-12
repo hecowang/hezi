@@ -60,4 +60,20 @@ class AudioTests(unittest.TestCase):
                 asyncio.run(module.generate(['米'],CONFIG,Path(folder),None))
             self.assertFalse((Path(folder)/'manifest.json').exists())
 
+    def test_partial_cache_without_key_only_lists_valid_audio(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/module.filename('米',CONFIG)).write_bytes(MP3)
+            (root/module.filename('水',CONFIG)).write_bytes(b'')
+            result=asyncio.run(module.generate(['米','水','说明'],CONFIG,root,None,allow_partial=True))
+            self.assertEqual(set(result['clips']),{'米'})
+            self.assertEqual(result['missing'],['水','说明'])
+            self.assertEqual(json.loads((root/'manifest.json').read_text())['clips'],result['clips'])
+            self.assertEqual((root/module.filename('米',CONFIG)).read_bytes(),MP3)
+
+    def test_no_audio_still_requires_key_even_in_partial_mode(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(RuntimeError,'Missing VOLC_TTS_API_KEY'):
+                asyncio.run(module.generate(['米'],CONFIG,Path(folder),None,allow_partial=True))
+
 if __name__=='__main__':unittest.main()

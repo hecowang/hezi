@@ -4,7 +4,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const result = spawnSync(process.env.PYTHON || 'python3', [resolve(root, 'scripts/generate_audio.py')], { cwd: root, stdio: 'inherit' });
+const result = spawnSync(process.env.PYTHON || 'python3', [resolve(root, 'scripts/generate_audio.py'), '--allow-partial'], { cwd: root, stdio: 'inherit' });
 if (result.error || result.status !== 0) { console.error('Startup stopped: finish audio generation first.'); process.exit(1); }
 const allowed = new Set(['index.html','style.css','app.js','course.js','speech-text.js','audio-player.js','feed-state.js']);
 const mime = { html: 'text/html; charset=utf-8', css: 'text/css; charset=utf-8', js: 'text/javascript; charset=utf-8', mp3: 'audio/mpeg', json: 'application/json; charset=utf-8' };
