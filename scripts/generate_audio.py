@@ -5,6 +5,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -13,6 +14,28 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 ENDPOINT = 'wss://openspeech.bytedance.com/api/v3/tts/bidirection'
+
+def load_dotenv(path, environ=None):
+    """Load single-line .env assignments without executing code or expanding values."""
+    target = os.environ if environ is None else environ
+    if not path.exists(): return
+    parsed = {}
+    for number, raw in enumerate(path.read_text(encoding='utf-8-sig').splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith('#'): continue
+        match = re.fullmatch(r'(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)', line)
+        if not match: raise ValueError(f'Invalid .env assignment at line {number}')
+        key, value = match.groups()
+        if value.startswith(('"', "'")):
+            quote = value[0]
+            quoted = re.fullmatch(re.escape(quote) + r'(.*?)' + re.escape(quote) + r'\s*(?:#.*)?', value)
+            if not quoted: raise ValueError(f'Invalid .env quoted value at line {number}')
+            value = quoted.group(1)
+        else:
+            value = re.split(r'\s+#', value, maxsplit=1)[0].rstrip()
+        parsed[key] = value
+    # Parse fully before applying; a bad line never logs a partial secret value.
+    for key, value in parsed.items(): target.setdefault(key, value)
 
 def packet(event, payload=None, session_id=None):
     data = json.dumps(payload or {}, ensure_ascii=False).encode()
@@ -142,6 +165,7 @@ async def generate(catalog, config, output, api_key, timeout=60, allow_partial=F
     return manifest
 
 def main():
+    load_dotenv(ROOT / '.env')
     parser = argparse.ArgumentParser()
     parser.add_argument('--dry-run', action='store_true', help='Count missing clips without contacting TTS')
     parser.add_argument('--allow-partial', action='store_true', help='Without a key, serve available clips if at least one cached clip exists')

@@ -44,7 +44,9 @@ node --check app.js
 python3 -m pip install -r requirements.txt
 ```
 
-在终端输入密钥（不回显、不写入命令历史）：
+在仓库根目录创建 `.env`（可从 `.env.example` 复制），填入 `VOLC_TTS_API_KEY=你的密钥`，然后直接 `npm start`。启动及 `audio:generate`、`audio:check` 都会自动读取根目录 `.env`；终端已设置的同名环境变量优先。支持空行、注释、单/双引号、`export KEY=value`，只读取单行配置，不执行文件内容或变量展开。
+
+也可在终端输入密钥（不回显、不写入命令历史）：
 
 ```bash
 read -s VOLC_TTS_API_KEY
@@ -52,7 +54,7 @@ export VOLC_TTS_API_KEY
 npm start
 ```
 
-默认使用 `seed-tts-2.0`、`zh_female_vv_uranus_bigtts`、语速 `-15`。需要账户已开通对应服务；可以通过 `VOLC_TTS_RESOURCE_ID`、`VOLC_TTS_SPEAKER`、`VOLC_TTS_SPEECH_RATE` 修改配置。`.env.example` 仅作配置参考，不会自动加载；不要提交真实密钥。
+默认使用 `seed-tts-2.0`、`zh_female_vv_uranus_bigtts`、语速 `-15`。需要账户已开通对应服务；可以通过 `VOLC_TTS_RESOURCE_ID`、`VOLC_TTS_SPEAKER`、`VOLC_TTS_SPEECH_RATE` 修改配置。`.env.example` 是配置模板，复制为 `.env` 后自动加载；不要提交真实密钥。
 
 启动会先检查全部 **501 段**音频：100 字各有讲解、简读、题目、正确反馈、错误反馈，加一段使用说明。缓存位于 `audio/`，按文本、音色、语速、资源及编码参数的 SHA-256 命名。完整文件直接跳过；缺失、空文件或头部无效的文件重新生成。改变文本/音色/语速时自动生成新的对应音频，旧文件保留。
 

@@ -1,6 +1,9 @@
 import asyncio
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 import struct
 import tempfile
@@ -75,5 +78,43 @@ class AudioTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             with self.assertRaisesRegex(RuntimeError,'Missing VOLC_TTS_API_KEY'):
                 asyncio.run(module.generate(['米'],CONFIG,Path(folder),None,allow_partial=True))
+
+    def test_dotenv_quotes_comments_bom_and_environment_priority(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'.env'
+            path.write_text("\ufeff# settings\nVOLC_TTS_API_KEY=\"example-token\" # comment\nexport VOLC_TTS_SPEAKER='voice'\nVOLC_TTS_SPEECH_RATE=-15 # slower\nVALUE=contains#hash\n",encoding='utf-8')
+            env={'VOLC_TTS_SPEAKER':'terminal-voice'}
+            module.load_dotenv(path,env)
+            self.assertEqual(env['VOLC_TTS_API_KEY'],'example-token')
+            self.assertEqual(env['VOLC_TTS_SPEAKER'],'terminal-voice')
+            self.assertEqual(env['VOLC_TTS_SPEECH_RATE'],'-15')
+            self.assertEqual(env['VALUE'],'contains#hash')
+
+    def test_missing_dotenv_and_invalid_line_dont_expose_values(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'.env';env={}
+            module.load_dotenv(path,env);self.assertEqual(env,{})
+            path.write_text('VOLC_TTS_API_KEY=example-token\nBAD=\"unclosed-sensitive-value\n')
+            with self.assertRaises(ValueError) as error:module.load_dotenv(path,env)
+            self.assertIn('line 2',str(error.exception))
+            self.assertNotIn('sensitive',str(error.exception))
+            self.assertEqual(env,{})
+
+    def test_cli_loads_repository_dotenv_from_another_directory(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)/'project';(root/'scripts').mkdir(parents=True);(root/'audio').mkdir()
+            shutil.copyfile(module.__file__,root/'scripts/generate_audio.py')
+            (root/'scripts/catalog.mjs').write_text('console.log(JSON.stringify(["米"]));')
+            (root/'.env').write_text('VOLC_TTS_API_KEY=example-token\nVOLC_TTS_SPEAKER=dotenv-voice\nVOLC_TTS_RESOURCE_ID=seed-tts-2.0\nVOLC_TTS_SPEECH_RATE=-20\n')
+            config={'speaker':'dotenv-voice','resource_id':'seed-tts-2.0','speech_rate':-20}
+            (root/'audio'/module.filename('米',config)).write_bytes(MP3)
+            env={k:v for k,v in os.environ.items() if not k.startswith('VOLC_TTS_')}
+            command=[__import__('sys').executable,str(root/'scripts/generate_audio.py'),'--dry-run']
+            output=subprocess.check_output(command,cwd=folder,env=env,text=True)
+            self.assertIn('reuse 1; generate 0',output)
+            self.assertNotIn('example-token',output)
+            env['VOLC_TTS_SPEECH_RATE']='-15'
+            output=subprocess.check_output(command,cwd=folder,env=env,text=True)
+            self.assertIn('reuse 0; generate 1',output)
 
 if __name__=='__main__':unittest.main()
