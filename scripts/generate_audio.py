@@ -88,11 +88,15 @@ async def receive(ws, expected=None, session_id=None):
         raise RuntimeError(f'Expected event {expected}, got {event}')
     return event, payload
 
-async def synthesize(ws, text, config):
+async def synthesize(ws, text, config, pronunciations=None):
     sid = str(uuid.uuid4())
     params = {'speaker': config['speaker'], 'text': '', 'audio_params': {
         'format': 'mp3', 'sample_rate': 24000, 'bit_rate': 64000,
         'speech_rate': config['speech_rate']}}
+    if pronunciations:
+        if config['resource_id'] not in ('seed-tts-2.0','seed-icl-2.0'):
+            raise RuntimeError('Expanded character pronunciation dictionaries require seed-tts-2.0 or seed-icl-2.0.')
+        params['additions'] = json.dumps({'pronunciation_dict': {'tone': pronunciations}}, ensure_ascii=False)
     base = {'user': {'uid': 'hezi-offline-builder'}, 'namespace': 'BidirectionalTTS', 'req_params': params}
     await ws.send(packet(100, dict(base, event=100), sid))
     await receive(ws, 150, sid)
@@ -115,8 +119,10 @@ async def synthesize(ws, text, config):
 def valid_audio(data):
     return len(data) > 32 and (data.startswith(b'ID3') or (data[0] == 255 and data[1] & 224 == 224))
 
-def filename(text, config):
-    identity = json.dumps({'text': text, 'config': config, 'format': 'mp3', 'sample_rate': 24000, 'bit_rate': 64000, 'protocol': 1}, ensure_ascii=False, sort_keys=True)
+def filename(text, config, pronunciations=None):
+    identity_data = {'text': text, 'config': config, 'format': 'mp3', 'sample_rate': 24000, 'bit_rate': 64000, 'protocol': 1}
+    if pronunciations: identity_data['pronunciations'] = pronunciations
+    identity = json.dumps(identity_data, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(identity.encode()).hexdigest() + '.mp3'
 
 def atomic_write(path, data):
@@ -127,17 +133,21 @@ def atomic_write(path, data):
     finally:
         temp.unlink(missing_ok=True)
 
+def catalog_jobs(catalog):
+    return [item if isinstance(item, dict) else {'text': item} for item in catalog]
+
 def plan(catalog, config, output):
-    entries = {text: filename(text, config) for text in catalog}
+    entries = {job['text']: filename(job['text'], config, job.get('pronunciations')) for job in catalog_jobs(catalog)}
     missing = []
     for text, name in entries.items():
         path = output / name
         if not path.exists() or not valid_audio(path.read_bytes()): missing.append((text, name))
     return entries, missing
 
-async def generate(catalog, config, output, api_key, timeout=60, allow_partial=False):
+async def generate(catalog, config, output, api_key, timeout=60, allow_partial=False, max_new_clips=0):
     output.mkdir(parents=True, exist_ok=True)
     entries, missing = plan(catalog, config, output)
+    jobs_by_text = {job['text']: job for job in catalog_jobs(catalog)}
     print(f'TTS: {len(entries)} clips; reuse {len(entries)-len(missing)}; generate {len(missing)}.', flush=True)
     deferred = []
     if missing and not api_key:
@@ -148,6 +158,10 @@ async def generate(catalog, config, output, api_key, timeout=60, allow_partial=F
         entries = {text: name for text, name in entries.items() if name not in missing_names}
         print(f'TTS: offline mode; {len(deferred)} missing clips deferred. Existing audio remains available. Set VOLC_TTS_API_KEY to complete generation.', flush=True)
         missing = []
+    if max_new_clips and len(missing) > max_new_clips:
+        deferred.extend(missing[max_new_clips:])
+        missing = missing[:max_new_clips]
+        print(f'TTS: batch generation {len(missing)}; defer {len(deferred)} for the next run.', flush=True)
     if missing:
         from websockets.asyncio.client import connect
         headers = {'X-Api-Key': api_key, 'X-Api-Resource-Id': config['resource_id'], 'X-Api-Connect-Id': str(uuid.uuid4())}
@@ -155,11 +169,14 @@ async def generate(catalog, config, output, api_key, timeout=60, allow_partial=F
             async with asyncio.timeout(timeout):
                 await ws.send(packet(1)); await receive(ws, 50)
             for index, (text, name) in enumerate(missing, 1):
-                async with asyncio.timeout(timeout): audio = await synthesize(ws, text, config)
+                async with asyncio.timeout(timeout): audio = await synthesize(ws, text, config, jobs_by_text[text].get('pronunciations'))
                 atomic_write(output / name, audio)
                 print(f'TTS: generated {index}/{len(missing)}', flush=True)
             async with asyncio.timeout(timeout):
                 await ws.send(packet(2)); await receive(ws, 52)
+    if deferred:
+        deferred_texts = {text for text, _ in deferred}
+        entries = {text: name for text, name in entries.items() if text not in deferred_texts}
     manifest = {'version': 1, 'config': config, 'clips': {t: 'audio/' + n for t, n in entries.items()}, 'missing': [text for text, _ in deferred]}
     atomic_write(output / 'manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2).encode())
     return manifest
@@ -169,7 +186,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dry-run', action='store_true', help='Count missing clips without contacting TTS')
     parser.add_argument('--allow-partial', action='store_true', help='Without a key, serve available clips if at least one cached clip exists')
+    parser.add_argument('--limit', type=int, default=None, help='Max new clips this run; 0 means all (or VOLC_TTS_MAX_NEW_CLIPS)')
     args = parser.parse_args()
+    max_new_clips = args.limit if args.limit is not None else int(os.getenv('VOLC_TTS_MAX_NEW_CLIPS', '0'))
+    if max_new_clips < 0: raise ValueError('Audio generation limit must be non-negative')
     config = {'speaker': os.getenv('VOLC_TTS_SPEAKER', 'zh_female_vv_uranus_bigtts'),
               'resource_id': os.getenv('VOLC_TTS_RESOURCE_ID', 'seed-tts-2.0'),
               'speech_rate': int(os.getenv('VOLC_TTS_SPEECH_RATE', '-15'))}
@@ -184,7 +204,7 @@ def main():
     try: fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError: raise RuntimeError('Audio generator already running, or stale .audio-generation.lock. Stop it before removing the lock.')
     os.close(fd)
-    try: asyncio.run(generate(catalog, config, output, os.getenv('VOLC_TTS_API_KEY'), int(os.getenv('VOLC_TTS_TIMEOUT', '60')), allow_partial=args.allow_partial))
+    try: asyncio.run(generate(catalog, config, output, os.getenv('VOLC_TTS_API_KEY'), int(os.getenv('VOLC_TTS_TIMEOUT', '60')), allow_partial=args.allow_partial, max_new_clips=max_new_clips))
     finally: lock.unlink(missing_ok=True)
 
 if __name__ == '__main__':

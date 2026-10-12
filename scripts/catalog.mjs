@@ -1,2 +1,2 @@
-import { speechCatalog } from '../speech-text.js';
-console.log(JSON.stringify(speechCatalog()));
+import { speechJobs } from '../speech-text.js';
+console.log(JSON.stringify(speechJobs()));

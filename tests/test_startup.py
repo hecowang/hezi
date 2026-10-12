@@ -30,7 +30,7 @@ class StartupTests(unittest.TestCase):
             catalog=json.loads(subprocess.check_output(['node',str(root/'scripts/catalog.mjs')],text=True))
             config={'speaker':'zh_female_vv_uranus_bigtts','resource_id':'seed-tts-2.0','speech_rate':-15}
             audio=root/'audio';audio.mkdir()
-            for text in (catalog[1:] if missing_guide else catalog):(audio/builder.filename(text,config)).write_bytes(b'ID3'+b'\0'*100)
+            for job in (catalog[1:501] if missing_guide else catalog):(audio/builder.filename(job['text'],config,job.get('pronunciations'))).write_bytes(b'ID3'+b'\0'*100)
             (root/'.env').write_text('PRIVATE_TEST_ONLY=secret-fixture')
             with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
             env={k:v for k,v in os.environ.items() if not k.startswith('VOLC_TTS_')}
@@ -46,11 +46,13 @@ class StartupTests(unittest.TestCase):
                     except (urllib.error.URLError,ConnectionError):
                         if process.poll() is not None or time.monotonic()>deadline:raise AssertionError('server failed to start')
                         time.sleep(.05)
+                with urllib.request.urlopen(url+'/data/characters.js') as response:
+                    self.assertEqual(response.status,200)
                 with urllib.request.urlopen(url+'/feed-state.js') as response:
                     self.assertEqual(response.status,200)
                 with urllib.request.urlopen(url+'/audio/manifest.json') as response:
-                    manifest=json.load(response);self.assertEqual(len(manifest['clips']),500 if missing_guide else 501)
-                    self.assertEqual(manifest['missing'],catalog[:1] if missing_guide else [])
+                    manifest=json.load(response);self.assertEqual(len(manifest['clips']),500 if missing_guide else 14101)
+                    self.assertEqual(manifest['missing'],[job['text'] for job in catalog[:1]+catalog[501:]] if missing_guide else [])
                 name=next(iter(manifest['clips'].values()))
                 request=urllib.request.Request(url+'/'+name,headers={'Range':'bytes=0-9'})
                 with urllib.request.urlopen(request) as response:
@@ -60,5 +62,5 @@ class StartupTests(unittest.TestCase):
                     self.assertEqual(result.exception.code,404)
             finally:
                 process.terminate();output=process.communicate(timeout=5)[0]
-            self.assertIn('reuse 500; generate 1' if missing_guide else 'reuse 501; generate 0',output)
+            self.assertIn('reuse 500; generate 13601' if missing_guide else 'reuse 14101; generate 0',output)
             if missing_guide:self.assertIn('offline mode',output)

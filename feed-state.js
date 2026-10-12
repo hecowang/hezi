@@ -8,3 +8,7 @@ export function markHeard(state, char, day) {
   if(!state.days.includes(day))state.days.push(day);
   return state;
 }
+export function visibleWindow(index, total, size=5) {
+  const start=Math.max(0, Math.min(index-Math.floor(size/2), Math.max(0,total-size)));
+  return {start,end:Math.min(total,start+size)};
+}

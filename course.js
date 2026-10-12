@@ -1,3 +1,4 @@
+import {characters} from './data/characters.js';
 export const lessons = [
   {
     "title": "一日三餐 · 1",
@@ -980,7 +981,11 @@ export const lessons = [
     ]
   }
 ];
-export const words = lessons.flatMap(l=>l.words);
+export const coreWords = lessons.flatMap(l=>l.words);
+const coreSet = new Set(coreWords.map(w=>w[0]));
+export const characterMetadata = Object.fromEntries(characters.map(([char,primary,readings,strokes,radical,rank,frequency,phonetic])=>[char,{primary,readings,strokes,radical,rank,frequency,phonetic,core:coreSet.has(char)}]));
+export const words = [...coreWords, ...characters.filter(r=>!coreSet.has(r[0])).sort((a,b)=>a[6]-b[6] || a[5]-b[5]).map(r=>[r[0],r[1],'','',''])];
+export const characterSetName = '通用规范汉字表一级字表';
 export const dayKey = (date = new Date()) => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(date);
 export const emptyState = () => ({version:1,records:{},days:[],pledge:false,refunded:false});
 export function recordAnswer(state,char,correct,now=Date.now()) {
@@ -991,4 +996,4 @@ export function recordAnswer(state,char,correct,now=Date.now()) {
 }
 export const learnedCount = s => Object.values(s.records).filter(r=>r.streak>0).length;
 export const dueWords = (s,now=Date.now()) => words.filter(w=>s.records[w[0]]?.due<=now);
-export const refundEligible = s => words.every(w=>s.records[w[0]]?.streak>=2);
+export const refundEligible = s => coreWords.every(w=>s.records[w[0]]?.streak>=2);

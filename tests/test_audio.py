@@ -8,6 +8,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
 spec=importlib.util.spec_from_file_location('generate_audio',Path(__file__).parents[1]/'scripts/generate_audio.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -23,6 +24,8 @@ class FakeSocket:
     async def send(self, data):
         self.sent.append(data)
         event=struct.unpack_from('>I',data,4)[0]
+        if event in (1,2):
+            self.frames.append(frame(50 if event==1 else 52,'connection',b'{}'));return
         length=struct.unpack_from('>I',data,8)[0]
         sid=data[12:12+length].decode()
         if event==100:self.frames.append(frame(150,sid,b'{}'))
@@ -116,5 +119,31 @@ class AudioTests(unittest.TestCase):
             env['VOLC_TTS_SPEECH_RATE']='-15'
             output=subprocess.check_output(command,cwd=folder,env=env,text=True)
             self.assertIn('reuse 0; generate 1',output)
+
+    def test_pronunciation_rules_change_cache_and_synthesis_payload(self):
+        rules=['的/(de5)']
+        self.assertNotEqual(module.filename('的。',CONFIG),module.filename('的。',CONFIG,rules))
+        self.assertNotEqual(module.filename('的。',CONFIG,rules),module.filename('的。',CONFIG,['的/(di4)']))
+        ws=FakeSocket();asyncio.run(module.synthesize(ws,'的。',CONFIG,rules))
+        data=ws.sent[0];length=struct.unpack_from('>I',data,8)[0]
+        payload=json.loads(data[16+length:])
+        self.assertEqual(json.loads(payload['req_params']['additions'])['pronunciation_dict']['tone'],rules)
+
+    def test_limited_generation_preserves_cache_and_resumes(self):
+        class Connection:
+            async def __aenter__(self):return FakeSocket()
+            async def __aexit__(self,*args):return False
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/module.filename('米',CONFIG)).write_bytes(MP3)
+            with mock.patch('websockets.asyncio.client.connect',side_effect=lambda *a,**k:Connection()):
+                first=asyncio.run(module.generate(['米','水','火','木'],CONFIG,root,'example-token',max_new_clips=1))
+                self.assertEqual(set(first['clips']),{'米','水'})
+                self.assertEqual(first['missing'],['火','木'])
+                second=asyncio.run(module.generate(['米','水','火','木'],CONFIG,root,'example-token',max_new_clips=1))
+                self.assertEqual(set(second['clips']),{'米','水','火'})
+                self.assertEqual(second['missing'],['木'])
+                final=asyncio.run(module.generate(['米','水','火','木'],CONFIG,root,'example-token'))
+                self.assertEqual(len(final['clips']),4)
+                self.assertEqual(final['missing'],[])
 
 if __name__=='__main__':unittest.main()

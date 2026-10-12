@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {speechCatalog,quizText,lessonText,wordText,feedbackText,guideText} from '../speech-text.js';
+import {speechCatalog,quizText,lessonText,wordText,feedbackText,guideText,speechJobs} from '../speech-text.js';
 import {words} from '../course.js';
 import {createOfflinePlayer} from '../audio-player.js';
-test('所有课程和提示的播放文本都在生成目录中',()=>{const texts=new Set(speechCatalog());assert.equal(texts.size,501);assert.ok(texts.has(guideText));for(const w of words)for(const text of [quizText(w),lessonText(w),wordText(w),feedbackText(w[0],true),feedbackText(w[0],false)])assert.ok(texts.has(text))});
+test('所有课程和提示的播放文本都在生成目录中',()=>{const texts=new Set(speechCatalog());assert.equal(texts.size,14101);assert.ok(texts.has(guideText));for(const w of words)for(const text of [quizText(w),lessonText(w),wordText(w),feedbackText(w[0],true),feedbackText(w[0],false)])assert.ok(texts.has(text))});
 test('复用同一个播放器，切换时停止旧声音，缺失文件提示',async()=>{const instances=[],failures=[];class FakeAudio{constructor(){instances.push(this);this.pauses=0}pause(){this.pauses++}play(){return Promise.resolve()}}const player=createOfflinePlayer({'米':'audio/1.mp3','水':'audio/2.mp3'},{AudioClass:FakeAudio,onFailure:m=>failures.push(m)});player.play('米');player.play('水');assert.equal(instances.length,1);assert.equal(instances[0].src,'audio/2.mp3');assert.ok(instances[0].pauses>0);player.play('不存在');assert.equal(failures.length,1)});
 test('自动播放被限制时变成可点击喇叭，不依赖文字提示',async()=>{const states=[],errors=[];class BlockedAudio{pause(){}play(){return Promise.reject(Object.assign(new Error(),{name:'NotAllowedError'}))}}const player=createOfflinePlayer({'米':'audio/1.mp3'},{AudioClass:BlockedAudio,onState:s=>states.push(s),onFailure:m=>errors.push(m)});player.play('米');await new Promise(resolve=>setImmediate(resolve));assert.equal(states.at(-1),'blocked');assert.equal(errors.length,0)});
 test('过时的播放完成回调不会记录为新字已听完',()=>{let audio;const heard=[];class FakeAudio{constructor(){audio=this}pause(){}play(){return Promise.resolve()}}const player=createOfflinePlayer({'米':'audio/1.mp3','水':'audio/2.mp3'},{AudioClass:FakeAudio,onEnded:t=>heard.push(t)});player.play('米');const stale=audio.onended;player.play('水');stale();assert.deepEqual(heard,[]);audio.onended();assert.deepEqual(heard,['水'])});
+
+test('扩展字的发音规则进入任务，原100字缓存文本不变',()=>{const jobs=speechJobs();assert.equal(jobs.slice(0,501).filter(j=>j.pronunciations).length,0);const target=jobs.find(j=>j.text==='的。');assert.deepEqual(target.pronunciations,['的/(de5)']);assert.ok(jobs.slice(501).every(j=>j.pronunciations?.length===1))});
